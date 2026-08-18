@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: gerador-leads-maps
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PORTFOLIO_LINK
+        value: https://apresentacaoadvocacia.vercel.app/

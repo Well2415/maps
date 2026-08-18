@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gerador de Leads - Google Maps</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Gerador de Leads via Google Maps</h1>
+      <p class="subtitle">
+        Busque empresas por segmento e cidade, filtre as que ainda nao tem site
+        e envie mensagem pelo WhatsApp com um clique.
+      </p>
+    </header>
+
+    <div class="alert alert-warning">
+      <strong>Como funciona:</strong> a busca navega diretamente no Google Maps (sem API paga).
+      Isso pode levar de alguns segundos a poucos minutos, dependendo da quantidade de
+      resultados. Nao feche esta aba enquanto a busca estiver rodando.
+    </div>
+
+    {% if erro %}
+      <div class="alert alert-error">{{ erro }}</div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('buscar') }}" class="search-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="tipo_empresa">Tipo de empresa</label>
+          <input
+            type="text"
+            id="tipo_empresa"
+            name="tipo_empresa"
+            placeholder="Ex: advocacia, contabilidade, dentista"
+            value="{{ tipo_empresa }}"
+            required
+          />
+        </div>
+        <div class="form-group">
+          <label for="cidade">Cidade / regiao</label>
+          <input
+            type="text"
+            id="cidade"
+            name="cidade"
+            placeholder="Ex: Sao Paulo, SP"
+            value="{{ cidade }}"
+          />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="link_portfolio">Link do seu site/portfolio (aparece na mensagem no lugar de {{ '{link}' }})</label>
+        <input
+          type="text"
+          id="link_portfolio"
+          name="link_portfolio"
+          placeholder="https://seusite.com"
+          value="{{ link_portfolio }}"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="mensagem">Mensagem do WhatsApp (use {{ '{nome}' }} para o nome da empresa e {{ '{link}' }} para o link acima)</label>
+        <textarea id="mensagem" name="mensagem" rows="4">{{ mensagem }}</textarea>
+      </div>
+
+      <div class="form-group form-group-small">
+        <label for="max_results">Quantidade maxima de resultados a analisar (5 a 60)</label>
+        <input
+          type="number"
+          id="max_results"
+          name="max_results"
+          min="5"
+          max="60"
+          value="{{ max_results }}"
+        />
+      </div>
+
+      <button type="submit" class="btn btn-primary">Buscar empresas sem site</button>
+    </form>
+
+    {% if leads is not none %}
+      <section class="results">
+        <div class="results-header">
+          <h2>{{ total }} empresa(s) sem site encontrada(s)</h2>
+          {% if leads %}
+          <div class="results-actions">
+            <button type="button" id="btn-disparo-assistido" class="btn btn-whatsapp">
+              Iniciar disparo assistido
+            </button>
+            <form method="post" action="{{ url_for('exportar_csv') }}">
+              <input type="hidden" name="tipo_empresa" value="{{ tipo_empresa }}" />
+              <input type="hidden" name="cidade" value="{{ cidade }}" />
+              <input type="hidden" name="leads_json" value='{{ leads_json }}' />
+              <button type="submit" class="btn btn-secondary">Baixar CSV</button>
+            </form>
+          </div>
+          {% endif %}
+        </div>
+
+        {% if leads %}
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Empresa</th>
+                <th>Endereco</th>
+                <th>Telefone</th>
+                <th>Status Web</th>
+                <th>Avaliacao</th>
+                <th>Acao</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for lead in leads %}
+              <tr>
+                <td>{{ lead.nome }}</td>
+                <td>{{ lead.endereco }}</td>
+                <td>{{ lead.telefone }}</td>
+                <td>{{ lead.status_web }}</td>
+                <td>
+                  {% if lead.avaliacao %}
+                    {{ lead.avaliacao }} ({{ lead.qtd_avaliacoes or 0 }})
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td>
+                  {% if lead.whatsapp_link %}
+                    <a class="btn btn-whatsapp" href="{{ lead.whatsapp_link }}" target="_blank" rel="noopener">
+                      Chamar no WhatsApp
+                    </a>
+                  {% else %}
+                    <span class="muted">Sem telefone</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+          <p class="muted">Nenhuma empresa sem site foi encontrada para essa busca.</p>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    <footer>
+      <p class="muted">
+        Use com responsabilidade: envie mensagens de forma individual e personalizada,
+        respeitando a LGPD e evitando disparos em massa automatizados.
+      </p>
+    </footer>
+  </div>
+
+  {% if leads %}
+  <div id="modal-disparo" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span id="disparo-progresso" class="muted">Contato 1 de {{ total }}</span>
+        <button type="button" id="btn-fechar-disparo" class="btn-icon" aria-label="Fechar">&times;</button>
+      </div>
+
+      <h3 id="disparo-nome">-</h3>
+      <p id="disparo-endereco" class="muted"></p>
+      <p id="disparo-status" class="muted"></p>
+
+      <div id="disparo-sem-telefone" class="alert alert-warning hidden">
+        Essa empresa nao tem telefone cadastrado no Google Maps — pulando automaticamente.
+      </div>
+
+      <a id="disparo-link-whatsapp" class="btn btn-whatsapp btn-large" href="#" target="_blank" rel="noopener">
+        Abrir WhatsApp e enviar
+      </a>
+
+      <div class="modal-nav">
+        <button type="button" id="btn-disparo-anterior" class="btn btn-secondary">Anterior</button>
+        <button type="button" id="btn-disparo-proximo" class="btn btn-primary">Marquei como enviado, proximo</button>
+        <button type="button" id="btn-disparo-pular" class="btn btn-secondary">Pular</button>
+      </div>
+
+      <p id="disparo-resumo" class="muted"></p>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const leads = {{ leads_json | safe }};
+      const comLink = leads.filter((l) => l.whatsapp_link);
+
+      const modal = document.getElementById("modal-disparo");
+      const btnAbrir = document.getElementById("btn-disparo-assistido");
+      const btnFechar = document.getElementById("btn-fechar-disparo");
+      const btnProximo = document.getElementById("btn-disparo-proximo");
+      const btnAnterior = document.getElementById("btn-disparo-anterior");
+      const btnPular = document.getElementById("btn-disparo-pular");
+
+      const elProgresso = document.getElementById("disparo-progresso");
+      const elNome = document.getElementById("disparo-nome");
+      const elEndereco = document.getElementById("disparo-endereco");
+      const elStatus = document.getElementById("disparo-status");
+      const elLink = document.getElementById("disparo-link-whatsapp");
+      const elSemTelefone = document.getElementById("disparo-sem-telefone");
+      const elResumo = document.getElementById("disparo-resumo");
+
+      let indice = 0;
+      let enviados = 0;
+
+      function renderizar() {
+        if (indice >= leads.length) {
+          elNome.textContent = "Fim da lista";
+          elEndereco.textContent = "";
+          elStatus.textContent = "";
+          elLink.classList.add("hidden");
+          elSemTelefone.classList.add("hidden");
+          btnProximo.disabled = true;
+          btnPular.disabled = true;
+          elProgresso.textContent = `Concluido: ${leads.length} de ${leads.length}`;
+          elResumo.textContent = `Voce marcou ${enviados} contato(s) como enviado(s) nesta sessao.`;
+          return;
+        }
+
+        const lead = leads[indice];
+        elProgresso.textContent = `Contato ${indice + 1} de ${leads.length}`;
+        elNome.textContent = lead.nome || "Empresa sem nome";
+        elEndereco.textContent = lead.endereco || "";
+        elStatus.textContent = lead.status_web ? `Status: ${lead.status_web}` : "";
+        elResumo.textContent = `Enviados nesta sessao: ${enviados}`;
+
+        if (lead.whatsapp_link) {
+          elLink.href = lead.whatsapp_link;
+          elLink.classList.remove("hidden");
+          elSemTelefone.classList.add("hidden");
+          btnProximo.disabled = false;
+        } else {
+          elLink.classList.add("hidden");
+          elSemTelefone.classList.remove("hidden");
+          btnProximo.disabled = true;
+        }
+
+        btnAnterior.disabled = indice === 0;
+        btnPular.disabled = false;
+      }
+
+      function abrirModal() {
+        if (comLink.length === 0) {
+          alert("Nenhum lead desta busca tem telefone para contato via WhatsApp.");
+          return;
+        }
+        indice = 0;
+        enviados = 0;
+        modal.classList.remove("hidden");
+        renderizar();
+      }
+
+      function fecharModal() {
+        modal.classList.add("hidden");
+      }
+
+      if (btnAbrir) {
+        btnAbrir.addEventListener("click", abrirModal);
+      }
+      btnFechar.addEventListener("click", fecharModal);
+
+      btnProximo.addEventListener("click", function () {
+        enviados += 1;
+        indice += 1;
+        renderizar();
+      });
+
+      btnPular.addEventListener("click", function () {
+        indice += 1;
+        renderizar();
+      });
+
+      btnAnterior.addEventListener("click", function () {
+        if (indice > 0) {
+          indice -= 1;
+          renderizar();
+        }
+      });
+
+      modal.addEventListener("click", function (evento) {
+        if (evento.target === modal) {
+          fecharModal();
+        }
+      });
+    })();
+  </script>
+  {% endif %}
+</body>
+</html>
