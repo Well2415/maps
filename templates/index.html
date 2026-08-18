@@ -87,7 +87,14 @@
     {% if leads is not none %}
       <section class="results">
         <div class="results-header">
-          <h2>{{ total }} empresa(s) sem site encontrada(s)</h2>
+          <div>
+            <h2>{{ total }} empresa(s) sem site encontrada(s)</h2>
+            {% if total_escaneado is not none %}
+              <p class="muted" style="margin: 2px 0 0;">
+                Analisamos {{ total_escaneado }} empresa(s) no Google Maps para essa busca.
+              </p>
+            {% endif %}
+          </div>
           {% if leads %}
           <div class="results-actions">
             <button type="button" id="btn-disparo-assistido" class="btn btn-whatsapp">

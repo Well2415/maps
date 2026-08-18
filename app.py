@@ -60,7 +60,7 @@ def montar_leads(tipo_empresa, cidade, mensagem_template, max_results, link_port
                 "whatsapp_link": link,
             }
         )
-    return leads
+    return leads, len(places)
 
 
 @app.route("/", methods=["GET"])
@@ -77,6 +77,7 @@ def index():
         max_results_limite=MAX_RESULTS_LIMITE,
         erro=None,
         total=None,
+        total_escaneado=None,
         leads_json="[]",
     )
 
@@ -96,12 +97,15 @@ def buscar():
 
     erro = None
     leads = []
+    total_escaneado = None
 
     if not tipo_empresa:
         erro = "Informe o tipo de empresa (ex: advocacia, contabilidade, dentista)."
     else:
         try:
-            leads = montar_leads(tipo_empresa, cidade, mensagem, max_results, link_portfolio)
+            leads, total_escaneado = montar_leads(
+                tipo_empresa, cidade, mensagem, max_results, link_portfolio
+            )
         except ScraperError as e:
             erro = str(e)
         except Exception as e:  # falha inesperada de navegador/rede
@@ -119,6 +123,7 @@ def buscar():
         max_results_limite=MAX_RESULTS_LIMITE,
         erro=erro,
         total=len(leads),
+        total_escaneado=total_escaneado,
         leads_json=_leads_json_seguro(leads),
     )
 
