@@ -14,8 +14,12 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
 
-MAX_RESULTS_PADRAO = 20
-MAX_RESULTS_LIMITE = 60
+MAX_RESULTS_PADRAO = 15
+MAX_RESULTS_MINIMO = 5
+# Limitado a 25 pra caber no plano gratis do Render (512MB de RAM): cada
+# resultado abre uma pagina de detalhes inteira no Chromium, entao um numero
+# alto demais derruba o servidor (memoria) ou estoura o timeout da requisicao.
+MAX_RESULTS_LIMITE = 25
 PORTFOLIO_LINK_PADRAO = os.environ.get("PORTFOLIO_LINK", "")
 
 STATUS_LABELS = {
@@ -69,6 +73,8 @@ def index():
         mensagem=DEFAULT_MESSAGE_TEMPLATE,
         link_portfolio=PORTFOLIO_LINK_PADRAO,
         max_results=MAX_RESULTS_PADRAO,
+        max_results_minimo=MAX_RESULTS_MINIMO,
+        max_results_limite=MAX_RESULTS_LIMITE,
         erro=None,
         total=None,
         leads_json="[]",
@@ -86,7 +92,7 @@ def buscar():
         max_results = int(request.form.get("max_results", MAX_RESULTS_PADRAO))
     except ValueError:
         max_results = MAX_RESULTS_PADRAO
-    max_results = max(5, min(max_results, MAX_RESULTS_LIMITE))
+    max_results = max(MAX_RESULTS_MINIMO, min(max_results, MAX_RESULTS_LIMITE))
 
     erro = None
     leads = []
@@ -109,6 +115,8 @@ def buscar():
         mensagem=mensagem,
         link_portfolio=link_portfolio,
         max_results=max_results,
+        max_results_minimo=MAX_RESULTS_MINIMO,
+        max_results_limite=MAX_RESULTS_LIMITE,
         erro=erro,
         total=len(leads),
         leads_json=_leads_json_seguro(leads),
