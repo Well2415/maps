@@ -64,6 +64,57 @@ def _accept_consent_if_present(page):
             continue
 
 
+def _diagnosticar_falha_busca(page):
+    """Investiga a pagina atual pra descobrir se o Google bloqueou a busca
+    (captcha/trafego incomum, comum em IPs de datacenter) ou se a busca so nao
+    encontrou nada mesmo, e monta uma mensagem de erro especifica pra cada caso."""
+    try:
+        url_atual = page.url
+    except Exception:
+        url_atual = ""
+    try:
+        titulo = page.title()
+    except Exception:
+        titulo = ""
+    try:
+        corpo = page.content().lower()
+    except Exception:
+        corpo = ""
+
+    if "/sorry/" in url_atual or "recaptcha" in corpo:
+        return (
+            "O Google bloqueou a busca e mostrou uma pagina de verificacao "
+            "(captcha), provavelmente por causa do trafego vindo do IP do servidor "
+            "onde o app esta hospedado (comum em servicos de nuvem como Render). "
+            "Espere alguns minutos e tente de novo com um numero menor de "
+            "resultados; se continuar bloqueando, rode o projeto localmente na "
+            "sua maquina, onde isso costuma funcionar melhor."
+        )
+
+    indicadores_bloqueio = [
+        "unusual traffic",
+        "trafego incomum",
+        "não sou um robô",
+        "nao sou um robo",
+        "i'm not a robot",
+        "detectamos um comportamento incomum",
+    ]
+    if any(ind in corpo for ind in indicadores_bloqueio):
+        return (
+            "O Google identificou a busca como trafego automatizado e bloqueou o "
+            "resultado (comum quando o app roda em um servidor de nuvem). Espere "
+            "alguns minutos e tente novamente, ou rode o projeto localmente."
+        )
+
+    return (
+        "Nao foi possivel carregar os resultados do Google Maps para essa busca "
+        f"(pagina '{titulo}'). Pode ser um bloqueio temporario do Google, uma "
+        "mudanca no layout da pagina, ou a busca realmente nao encontrou nenhum "
+        "resultado para esse termo/cidade. Tente novamente ou ajuste os termos "
+        "da busca."
+    )
+
+
 def _coletar_links(page, max_results):
     try:
         page.wait_for_selector('a[href*="/maps/place/"]', timeout=15000)
@@ -194,8 +245,9 @@ def search_places(query, max_results=20, headless=True):
 
             links = _coletar_links(page, max_results)
             if not links:
+                motivo = _diagnosticar_falha_busca(page)
                 browser.close()
-                return resultados
+                raise ScraperError(motivo)
 
             for link in links:
                 detalhe = _extrair_detalhes(page, link)
@@ -203,6 +255,8 @@ def search_places(query, max_results=20, headless=True):
                     resultados.append(detalhe)
 
             browser.close()
+    except ScraperError:
+        raise
     except Exception as e:
         raise ScraperError(
             "Nao foi possivel concluir a busca no Google Maps. "
