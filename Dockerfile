@@ -1,9 +1,20 @@
 FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy
 
+# A imagem base instala o Chromium na pasta pessoal do usuario root
+# (/root/.cache/ms-playwright). O Render roda o container como um usuario sem
+# privilegios ("sandbox"), que nao enxerga essa pasta - por isso o app dava erro
+# "Executable doesn't exist" em runtime. Fixando o caminho num diretorio proprio
+# e liberando leitura/execucao pra qualquer usuario, o navegador fica acessivel
+# independente de quem estiver rodando o container.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+RUN playwright install --with-deps chromium \
+    && chmod -R o+rX /ms-playwright
 
 COPY . .
 
